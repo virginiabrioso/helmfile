@@ -25,6 +25,7 @@ import (
 	"go.uber.org/zap"
 	"helm.sh/helm/v3/pkg/cli"
 
+	"github.com/helmfile/helmfile/pkg/argparser"
 	"github.com/helmfile/helmfile/pkg/environment"
 	"github.com/helmfile/helmfile/pkg/event"
 	"github.com/helmfile/helmfile/pkg/filesystem"
@@ -182,6 +183,8 @@ type HelmSpec struct {
 	ReuseValues bool `yaml:"reuseValues"`
 	// Propagate '--post-renderer' to helmv3 template and helm install
 	PostRenderer *string `yaml:"postRenderer,omitempty"`
+	// Propagate '--post-renderer-args' to helmv3 template and helm install
+	PostRendererArgs []string `yaml:"postRendererArgs,omitempty"`
 	// Cascade '--cascade' to helmv3 delete, available values: background, foreground, or orphan, default: background
 	Cascade *string `yaml:"cascade,omitempty"`
 
@@ -355,6 +358,9 @@ type ReleaseSpec struct {
 
 	// Propagate '--post-renderer' to helmv3 template and helm install
 	PostRenderer *string `yaml:"postRenderer,omitempty"`
+
+	// Propagate '--post-renderer-args' to helmv3 template and helm install
+	PostRendererArgs []string `yaml:"postRendererArgs,omitempty"`
 
 	// Cascade '--cascade' to helmv3 delete, available values: background, foreground, or orphan, default: background
 	Cascade *string `yaml:"cascade,omitempty"`
@@ -710,14 +716,15 @@ func (st *HelmState) DetectReleasesToBeDeleted(helm helmexec.Interface, releases
 }
 
 type SyncOpts struct {
-	Set          []string
-	SkipCleanup  bool
-	SkipCRDs     bool
-	Wait         bool
-	WaitForJobs  bool
-	ReuseValues  bool
-	ResetValues  bool
-	PostRenderer string
+	Set              []string
+	SkipCleanup      bool
+	SkipCRDs         bool
+	Wait             bool
+	WaitForJobs      bool
+	ReuseValues      bool
+	ResetValues      bool
+	PostRenderer     string
+	PostRendererArgs []string
 }
 
 type SyncOpt interface{ Apply(*SyncOpts) }
@@ -1395,6 +1402,7 @@ type TemplateOpts struct {
 	IncludeCRDs       bool
 	SkipTests         bool
 	PostRenderer      string
+	PostRendererArgs  []string
 	KubeVersion       string
 }
 
@@ -1916,6 +1924,7 @@ type DiffOpts struct {
 	ReuseValues       bool
 	ResetValues       bool
 	PostRenderer      string
+	PostRendererArgs  []string
 }
 
 func (o *DiffOpts) Apply(opts *DiffOpts) {
@@ -2451,6 +2460,16 @@ func (st *HelmState) appendConnectionFlags(flags []string, release *ReleaseSpec)
 	return flags
 }
 
+func (st *HelmState) appendExtraDiffFlags(flags []string, opt *DiffOpts) []string {
+	switch {
+	case opt != nil && opt.DiffArgs != "":
+		flags = append(flags, argparser.CollectArgs(opt.DiffArgs)...)
+	case st.HelmDefaults.DiffArgs != nil:
+		flags = append(flags, argparser.CollectArgs(strings.Join(st.HelmDefaults.DiffArgs, " "))...)
+	}
+	return flags
+}
+
 // appendKeyringFlags append all the helm command-line flags related to keyring
 func (st *HelmState) appendKeyringFlags(flags []string, release *ReleaseSpec) []string {
 	switch {
@@ -2561,6 +2580,12 @@ func (st *HelmState) flagsForUpgrade(helm helmexec.Interface, release *ReleaseSp
 	}
 	flags = st.appendPostRenderFlags(flags, release, postRenderer)
 
+	var postRendererArgs []string
+	if opt != nil {
+		postRendererArgs = opt.PostRendererArgs
+	}
+	flags = st.appendPostRenderArgsFlags(flags, release, postRendererArgs)
+
 	common, clean, err := st.namespaceAndValuesFlags(helm, release, workerIndex)
 	if err != nil {
 		return nil, clean, err
@@ -2576,12 +2601,15 @@ func (st *HelmState) flagsForTemplate(helm helmexec.Interface, release *ReleaseS
 	flags = st.appendHelmXFlags(flags, release)
 
 	postRenderer := ""
+	var postRendererArgs []string
 	kubeVersion := ""
 	if opt != nil {
 		postRenderer = opt.PostRenderer
+		postRendererArgs = opt.PostRendererArgs
 		kubeVersion = opt.KubeVersion
 	}
 	flags = st.appendPostRenderFlags(flags, release, postRenderer)
+	flags = st.appendPostRenderArgsFlags(flags, release, postRendererArgs)
 	flags = st.appendApiVersionsFlags(flags, release, kubeVersion)
 	flags = st.appendChartDownloadTLSFlags(flags, release)
 
@@ -2647,10 +2675,18 @@ func (st *HelmState) flagsForDiff(helm helmexec.Interface, release *ReleaseSpec,
 	}
 	flags = st.appendPostRenderFlags(flags, release, postRenderer)
 
+	var postRendererArgs []string
+	if opt != nil {
+		postRendererArgs = opt.PostRendererArgs
+	}
+	flags = st.appendPostRenderArgsFlags(flags, release, postRendererArgs)
+
 	common, files, err := st.namespaceAndValuesFlags(helm, release, workerIndex)
 	if err != nil {
 		return nil, files, err
 	}
+	flags = st.appendExtraDiffFlags(flags, opt)
+
 	return append(flags, common...), files, nil
 }
 

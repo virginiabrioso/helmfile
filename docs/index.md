@@ -155,8 +155,8 @@ repositories:
 # Advanced configuration: You can use a ca bundle to use an https repo
 # with a self-signed certificate
 - name: insecure
-   url: https://charts.my-insecure-domain.com
-   caFile: optional_ca_crt
+  url: https://charts.my-insecure-domain.com
+  caFile: optional_ca_crt
 # Advanced configuration: You can skip the verification of TLS for an https repo
 - name: skipTLS
   url: https://ss.my-insecure-domain.com
@@ -211,6 +211,12 @@ helmDefaults:
   reuseValues: false
   # propagate `--post-renderer` to helmv3 template and helm install
   postRenderer: "path/to/postRenderer"
+  # propagate `--post-renderer-args` to helmv3 template and helm install. This allows using Powershell
+  # scripts on Windows as a post renderer
+  postRendererArgs:
+  - PowerShell
+  - "-Command"
+  - "theScript.ps1"
   #	cascade `--cascade` to helmv3 delete, available values: background, foreground, or orphan, default: background
   cascade: "background"
   # insecureSkipTLSVerify is true if the TLS verification should be skipped when fetching remote chart
@@ -314,6 +320,12 @@ releases:
     skipDeps: false
     # propagate `--post-renderer` to helmv3 template and helm install
     postRenderer: "path/to/postRenderer"
+    # propagate `--post-renderer-args` to helmv3 template and helm install. This allows using Powershell
+    # scripts on Windows as a post renderer
+    postRendererArgs:
+    - PowerShell
+    - "-Command"
+    - "theScript.ps1"
     # cascade `--cascade` to helmv3 delete, available values: background, foreground, or orphan, default: background
     cascade: "background"
     # insecureSkipTLSVerify is true if the TLS verification should be skipped when fetching remote chart

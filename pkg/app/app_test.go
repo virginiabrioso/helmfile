@@ -17,6 +17,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/helmfile/vals"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"helm.sh/helm/v3/pkg/chart"
 
@@ -2180,6 +2181,10 @@ func (c configImpl) PostRenderer() string {
 	return ""
 }
 
+func (c configImpl) PostRendererArgs() []string {
+	return nil
+}
+
 func (c configImpl) KubeVersion() string {
 	return c.kubeVersion
 }
@@ -2221,6 +2226,7 @@ type applyConfig struct {
 	waitForJobs            bool
 	reuseValues            bool
 	postRenderer           string
+	postRendererArgs       []string
 	kubeVersion            string
 
 	// template-only options
@@ -2380,6 +2386,10 @@ func (a applyConfig) ResetValues() bool {
 
 func (a applyConfig) PostRenderer() string {
 	return a.postRenderer
+}
+
+func (a applyConfig) PostRendererArgs() []string {
+	return a.postRendererArgs
 }
 
 func (a applyConfig) KubeVersion() string {
@@ -4268,4 +4278,43 @@ func TestSetValuesTemplate(t *testing.T) {
 func location() string {
 	_, fn, line, _ := goruntime.Caller(1)
 	return fmt.Sprintf("%s:%d", filepath.Base(fn), line)
+}
+
+func TestGetArgs(t *testing.T) {
+	tests := []struct {
+		args        string
+		expected    string
+		defaultArgs []string
+	}{
+		{
+			args:        "-f a.yaml -f b.yaml -i --set app1.bootstrap=true --set app2.bootstrap=false",
+			defaultArgs: []string{"--recreate-pods", "--force"},
+			expected:    "-f a.yaml -f b.yaml -i --set app1.bootstrap=true --set app2.bootstrap=false --recreate-pods --force",
+		},
+		{
+			args:        "-e  a.yaml   -d b.yaml   -i --set app1.bootstrap=true --set app2.bootstrap=false",
+			defaultArgs: []string{"-q www", "-w"},
+			expected:    "-e a.yaml -d b.yaml -i --set app1.bootstrap=true --set app2.bootstrap=false -q www -w",
+		},
+		{
+			args:     "--timeout=3600 --set app1.bootstrap=true --set app2.bootstrap=false",
+			expected: "--timeout=3600 --set app1.bootstrap=true --set app2.bootstrap=false",
+		},
+		{
+			args:        "--timeout=3600 --set app1.bootstrap=true --set app2.bootstrap=false,app3.bootstrap=true",
+			defaultArgs: []string{"--recreate-pods", "--force"},
+			expected:    "--timeout=3600 --set app1.bootstrap=true --set app2.bootstrap=false,app3.bootstrap=true --recreate-pods --force",
+		},
+	}
+	for _, test := range tests {
+		Helmdefaults := state.HelmSpec{KubeContext: "test", Args: test.defaultArgs}
+		testState := &state.HelmState{
+			ReleaseSetSpec: state.ReleaseSetSpec{
+				HelmDefaults: Helmdefaults,
+			},
+		}
+		receivedArgs := GetArgs(test.args, testState)
+
+		require.Equalf(t, test.expected, strings.Join(receivedArgs, " "), "expected args %s, received args %s", test.expected, strings.Join(receivedArgs, " "))
+	}
 }
